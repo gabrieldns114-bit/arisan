@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Arisan RT 02 / RW 01 — Dusun Ketig, Desa Danasri Lor</title>
 <!-- Google Font: Plus Jakarta Sans -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -306,6 +306,26 @@
 
   <section class="stats" id="stats"></section>
 
+  <section class="card" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%); border: 1px solid #99f6e4;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h3 style="font-size: 16px; font-weight: 800; color: var(--primary-dark); margin-bottom: 4px;">📊 Akumulasi Total Dana Kas Keseluruhan</h3>
+        <p style="font-size: 13px; color: var(--muted);">Jumlah total uang kas RT dan kas dana sosial dari periode-periode sebelumnya hingga saat ini.</p>
+      </div>
+      <button id="btnEditCumulative" class="btn btn-solid btn-sm hidden" type="button">✏️ Atur Akumulasi Kas</button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 16px;">
+      <div style="background: #fff; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+        <div style="font-size: 11px; font-weight: 800; color: #7c3aed; text-transform: uppercase; margin-bottom: 4px;">Akumulasi Kas RT (Total)</div>
+        <div id="lblCumulativeKasRT" style="font-size: 18px; font-weight: 800; color: #6d28d9;">Rp 0</div>
+      </div>
+      <div style="background: #fff; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+        <div style="font-size: 11px; font-weight: 800; color: #db2777; text-transform: uppercase; margin-bottom: 4px;">Akumulasi Kas Sosial (Total)</div>
+        <div id="lblCumulativeKasSosial" style="font-size: 18px; font-weight: 800; color: #be185d;">Rp 0</div>
+      </div>
+    </div>
+  </section>
+
   <section class="card">
     <div class="toolbar">
       <input type="text" id="search" placeholder="🔍 Cari nama anggota atau keterangan..." />
@@ -441,14 +461,17 @@
   </div>
 </div>
 
-<!-- MODAL: ATUR NOMINAL DEFAULT (KHUSUS ADMIN) -->
+<!-- MODAL: ATUR NOMINAL DEFAULT -->
 <div class="overlay hidden" id="settingsOverlay">
   <div class="modal" style="max-width:440px">
     <div class="modal-head">
-      <div><h2>Atur Nominal Default</h2><p>Nominal ini otomatis terisi saat memasukkan data baru</p></div>
+      <div><h2>Atur Nominal & Akumulasi Kas</h2><p>Pengaturan standar setoran dan total keseluruhan dana kas</p></div>
       <button class="x" data-close="settingsOverlay" type="button">✕</button>
     </div>
     <div class="modal-body">
+      <div style="font-size:13px; font-weight:800; color:var(--primary-dark); margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+        1. Nominal Standard Anggota Baru
+      </div>
       <div class="field">
         <label>Nominal Standard Uang Arisan</label>
         <div class="rp-input"><span>Rp</span>
@@ -461,10 +484,26 @@
           <input type="number" id="defKasRT" placeholder="0" />
         </div>
       </div>
-      <div class="field">
+      <div class="field" style="margin-bottom:20px;">
         <label>Nominal Standard Kas Dana Sosial</label>
         <div class="rp-input"><span>Rp</span>
           <input type="number" id="defKasSosial" placeholder="0" />
+        </div>
+      </div>
+
+      <div style="font-size:13px; font-weight:800; color:#7c3aed; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px;">
+        2. Akumulasi Total Dana Kas Keseluruhan (Dari Periode Lalu)
+      </div>
+      <div class="field">
+        <label>Total Akumulasi Kas RT</label>
+        <div class="rp-input"><span>Rp</span>
+          <input type="number" id="cumKasRT" placeholder="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Total Akumulasi Kas Dana Sosial</label>
+        <div class="rp-input"><span>Rp</span>
+          <input type="number" id="cumKasSosial" placeholder="0" />
         </div>
       </div>
     </div>
@@ -494,7 +533,6 @@
   </div>
 </div>
 
-<!-- FIREBASE SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -520,11 +558,13 @@ let editingId = null;
 let pendingDeleteId = null;
 let firebaseReady = false;
 
-// Default Amounts
+// Default Amounts & Cumulative Totals
 let defaultAmounts = {
   uangArisan: 50000,
   kasRT: 10000,
-  kasSosial: 5000
+  kasSosial: 5000,
+  cumulativeKasRT: 0,
+  cumulativeKasSosial: 0
 };
 
 const $ = (id) => document.getElementById(id);
@@ -579,6 +619,8 @@ function initFirebase(){
         .filter(d => d.id !== SETTINGS_DOC)
         .map(d => ({ id: d.id, ...d.data() }));
       render();
+    }, err => {
+      console.error("Firestore sync error:", err);
     });
 
     // Sync Settings Realtime
@@ -590,7 +632,7 @@ function initFirebase(){
 
     return true;
   } catch(e) {
-    console.error(e);
+    console.error("Firebase init error:", e);
     return false;
   }
 }
@@ -604,6 +646,7 @@ function updateUIMode(){
     $("btnLogout").classList.remove("hidden");
     $("btnAdd").classList.remove("hidden");
     $("btnSetMoney").classList.remove("hidden");
+    $("btnEditCumulative").classList.remove("hidden");
   } else {
     badge.textContent = "👁 Mode Lihat";
     badge.className = "badge badge-view";
@@ -611,12 +654,13 @@ function updateUIMode(){
     $("btnLogout").classList.add("hidden");
     $("btnAdd").classList.add("hidden");
     $("btnSetMoney").classList.add("hidden");
+    $("btnEditCumulative").classList.add("hidden");
   }
 }
 
 /* LOGIN & LOGOUT */
 $("btnLogin").addEventListener("click", () => {
-  if(!firebaseReady) return alert("Firebase belum dikonfigurasi.");
+  if(!firebaseReady) return toast("Firebase belum siap.", "err");
   $("loginErr").classList.add("hidden");
   $("loginEmail").value = "";
   $("loginPass").value = "";
@@ -663,24 +707,31 @@ $("btnLogout").addEventListener("click", async () => {
 });
 
 /* NOMINAL DEFAULT SETTINGS */
-$("btnSetMoney").addEventListener("click", () => {
+$("btnSetMoney").addEventListener("click", openSettingsModal);
+$("btnEditCumulative").addEventListener("click", openSettingsModal);
+
+function openSettingsModal(){
   $("defArisan").value = defaultAmounts.uangArisan || 0;
   $("defKasRT").value = defaultAmounts.kasRT || 0;
   $("defKasSosial").value = defaultAmounts.kasSosial || 0;
+  $("cumKasRT").value = defaultAmounts.cumulativeKasRT || 0;
+  $("cumKasSosial").value = defaultAmounts.cumulativeKasSosial || 0;
   bukaModal("settingsOverlay");
-});
+}
 
 $("btnSaveSettings").addEventListener("click", async () => {
   if(!isAdmin) return;
   const data = {
     uangArisan: Number($("defArisan").value) || 0,
     kasRT: Number($("defKasRT").value) || 0,
-    kasSosial: Number($("defKasSosial").value) || 0
+    kasSosial: Number($("defKasSosial").value) || 0,
+    cumulativeKasRT: Number($("cumKasRT").value) || 0,
+    cumulativeKasSosial: Number($("cumKasSosial").value) || 0
   };
 
   try {
     await db.collection(COLLECTION).doc(SETTINGS_DOC).set(data, { merge: true });
-    toast("Nominal default berhasil diperbarui! ✅", "ok");
+    toast("Pengaturan & akumulasi kas berhasil diperbarui! ✅", "ok");
     tutupModal("settingsOverlay");
   } catch(e) {
     toast("Gagal menyimpan pengaturan: " + e.message, "err");
@@ -690,7 +741,19 @@ $("btnSaveSettings").addEventListener("click", async () => {
 /* RENDER FUNCTION */
 function render(){
   renderStats();
+  renderCumulativeDisplay();
   renderTabel();
+}
+
+function renderCumulativeDisplay(){
+  const listKasRT = members.reduce((a,m)=> a + (Number(m.kasRT)||0), 0);
+  const listKasSosial = members.reduce((a,m)=> a + (Number(m.kasSosial)||0), 0);
+
+  const totalRT = listKasRT + (Number(defaultAmounts.cumulativeKasRT) || 0);
+  const totalSosial = listKasSosial + (Number(defaultAmounts.cumulativeKasSosial) || 0);
+
+  $("lblCumulativeKasRT").textContent = rp(totalRT);
+  $("lblCumulativeKasSosial").textContent = rp(totalSosial);
 }
 
 function renderStats(){
@@ -805,7 +868,7 @@ function bukaForm(id){
     const m = members.find(x => x.id === id);
     if(!m) return;
     $("formTitle").textContent = "Edit Data Arisan";
-    $("formSub").textContent   = "Perbarui data " + (m.nama||"");
+    $("formSub").textContent    = "Perbarui data " + (m.nama||"");
     $("fId").value = id;
     $("fNama").value = m.nama || "";
     $("fTanggal").value = m.tanggal || "";
@@ -816,12 +879,11 @@ function bukaForm(id){
     $("fKeterangan").value = m.keterangan || "";
   } else {
     $("formTitle").textContent = "Tambah Anggota Arisan";
-    $("formSub").textContent   = "Lengkapi data anggota di bawah ini";
+    $("formSub").textContent    = "Lengkapi data anggota di bawah ini";
     $("fId").value = "";
     $("fNama").value = "";
     $("fTanggal").value = new Date().toISOString().slice(0,10);
     $("fStatus").value = "belum";
-    // Default isi berdasarkan nilai yang diset Admin
     $("fArisan").value = defaultAmounts.uangArisan || 0;
     $("fKasRT").value = defaultAmounts.kasRT || 0;
     $("fKasSosial").value = defaultAmounts.kasSosial || 0;
@@ -836,98 +898,116 @@ $("btnSave").addEventListener("click", async () => {
   if(!isAdmin) return;
   const nama = $("fNama").value.trim();
   if(!nama){
-    toast("Nama anggota wajib diisi.", "err");
+    toast("Nama anggota wajib diisi!", "err");
+    $("fNama").focus();
     return;
   }
 
-  const data = {
-    nama,
-    tanggal:    $("fTanggal").value || "",
-    status:     $("fStatus").value || "belum",
+  const payload = {
+    nama: nama,
+    tanggal: $("fTanggal").value || new Date().toISOString().slice(0,10),
+    status: $("fStatus").value,
     uangArisan: Number($("fArisan").value) || 0,
-    kasRT:      Number($("fKasRT").value) || 0,
-    kasSosial:  Number($("fKasSosial").value) || 0,
-    keterangan: $("fKeterangan").value.trim(),
-    updatedAt:  firebase.firestore.FieldValue.serverTimestamp()
+    kasRT: Number($("fKasRT").value) || 0,
+    kasSosial: Number($("fKasSosial").value) || 0,
+    keterangan: $("fKeterangan").value.trim()
   };
+
+  const btn = $("btnSave");
+  btn.disabled = true;
+  btn.textContent = "Menyimpan...";
 
   try {
     if(editingId){
-      await db.collection(COLLECTION).doc(editingId).update(data);
-      toast("Data diperbarui ✅", "ok");
+      await db.collection(COLLECTION).doc(editingId).update(payload);
+      toast("Data berhasil diperbarui! ✅", "ok");
     } else {
-      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-      await db.collection(COLLECTION).add(data);
-      toast("Anggota baru ditambahkan ✅", "ok");
+      await db.collection(COLLECTION).add(payload);
+      toast("Anggota baru berhasil ditambahkan! ✅", "ok");
     }
     tutupModal("formOverlay");
   } catch(e) {
-    toast("Gagal menyimpan data.", "err");
+    toast("Gagal menyimpan data: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "💾 Simpan";
   }
 });
 
+/* TOGGLE STATUS */
 async function toggleStatus(id){
   if(!isAdmin) return;
   const m = members.find(x => x.id === id);
   if(!m) return;
-
-  const baru = m.status === "sudah" ? "belum" : "sudah";
-  const patch = { status: baru, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-  if(baru === "sudah" && !m.tanggal){
-    patch.tanggal = new Date().toISOString().slice(0,10);
-  }
-
+  const newStatus = m.status === "sudah" ? "belum" : "sudah";
   try {
-    await db.collection(COLLECTION).doc(id).update(patch);
-    toast(baru === "sudah" ? "Status ditandai SUDAH keluar ✅" : "Status dikembalikan ke BELUM keluar ⏳", "ok");
+    await db.collection(COLLECTION).doc(id).update({ status: newStatus });
+    toast(`Status ${m.nama} diubah.`, "ok");
   } catch(e) {
-    toast("Gagal mengubah status.", "err");
+    toast("Gagal mengubah status: " + e.message, "err");
   }
 }
 
+/* DELETE MEMBER */
 function konfirmasiHapus(id){
   if(!isAdmin) return;
   const m = members.find(x => x.id === id);
   if(!m) return;
   pendingDeleteId = id;
-  $("delName").textContent = m.nama || "ini";
+  $("delName").textContent = m.nama;
   bukaModal("delOverlay");
 }
 
 $("btnDoDelete").addEventListener("click", async () => {
   if(!isAdmin || !pendingDeleteId) return;
+  const btn = $("btnDoDelete");
+  btn.disabled = true;
+  btn.textContent = "Menghapus...";
+
   try {
     await db.collection(COLLECTION).doc(pendingDeleteId).delete();
-    toast("Data berhasil dihapus 🗑️", "ok");
+    toast("Data berhasil dihapus.", "ok");
     tutupModal("delOverlay");
   } catch(e) {
-    toast("Gagal menghapus.", "err");
+    toast("Gagal menghapus data: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🗑 Ya, Hapus";
+    pendingDeleteId = null;
   }
 });
 
 /* EXPORT CSV & PRINT */
-$("btnExport").addEventListener("click", () => {
-  const data = dataTampil();
-  if(data.length === 0) return toast("Tidak ada data.", "err");
-
-  let csv = "No,Nama Anggota,Tanggal,Uang Arisan,Kas RT,Kas Dana Sosial,Keterangan,Status\n";
-  data.forEach((m, i) => {
-    csv += `"${i+1}","${m.nama||''}","${m.tanggal||''}","${m.uangArisan||0}","${m.kasRT||0}","${m.kasSosial||0}","${m.keterangan||''}","${m.status||''}"\n`;
-  });
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `arisan-reydns-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
 $("btnPrint").addEventListener("click", () => window.print());
 
+$("btnExport").addEventListener("click", () => {
+  const data = dataTampil();
+  if(data.length === 0){
+    toast("Tidak ada data untuk diexport.", "err");
+    return;
+  }
+
+  let csv = "No,Nama Anggota,Tanggal,Uang Arisan,Kas RT,Kas Dana Sosial,Keterangan,Status\n";
+  data.forEach((m, idx) => {
+    csv += `"${idx+1}","${(m.nama||"").replace(/"/g,'""')}","${m.tanggal||""}","${m.uangArisan||0}","${m.kasRT||0}","${m.kasSosial||0}","${(m.keterangan||"").replace(/"/g,'""')}","${m.status === "sudah" ? "Sudah Keluar" : "Belum Keluar"}"\n`;
+  });
+
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "arisan_rt02_dusunketig.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast("File CSV berhasil diunduh! ⬇", "ok");
+});
+
 window.addEventListener("DOMContentLoaded", () => {
-  initFirebase();
+  const ok = initFirebase();
+  if(!ok){
+    $("setupWarn").classList.remove("hidden");
+  }
 });
 </script>
 </body>
